@@ -78,6 +78,16 @@
   .locate-btn.active { color: #1a73e8; }
   .locate-btn.error { color: #b00; }
 
+  .sola-label {
+    background: none;
+    border: none;
+    box-shadow: none;
+    font-weight: 700;
+    font-size: 13px;
+    color: #7a3e00;
+    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+  }
+
   .watermark-overlay {
     position: fixed;
     inset: 0;
@@ -222,31 +232,104 @@
     alert('Nu am putut obtine locatia: ' + e.message);
   });
 
+  // Incarcare in doua trepte, ca harta sa fie utilizabila imediat:
+  // 1. "sole.geojson" (contur dizolvat per tarla, ~64 forme) - incarcat si
+  //    afisat imediat, la orice nivel de zoom.
+  // 2. "imobile.geojson" (cele 3136 de poligoane individuale, cu popup si
+  //    eticheta de nr. cadastral) - incarcat in fundal, dar adaugat pe
+  //    harta abia cand useru da zoom peste DETAIL_MIN_ZOOM. Sub acel prag
+  //    e scos de pe harta (desi ramane in memorie, gata de reafisat).
+  const DETAIL_MIN_ZOOM = 15;
+  const LABEL_MIN_ZOOM = 17;
+
   const featuresByNrcad = {};
+  let detailLayer = null;
+  let overviewLayer = null;
+  let pendingFillOpacity = 0.5;
+
+  const updateLabelVisibility = () => {
+    map.getContainer().classList.toggle('labels-hidden', map.getZoom() < LABEL_MIN_ZOOM);
+  };
+
+  function updateZoomLayers() {
+    const z = map.getZoom();
+    if (z >= DETAIL_MIN_ZOOM) {
+      if (overviewLayer && map.hasLayer(overviewLayer)) map.removeLayer(overviewLayer);
+      if (detailLayer && !map.hasLayer(detailLayer)) detailLayer.addTo(map);
+    } else {
+      if (detailLayer && map.hasLayer(detailLayer)) map.removeLayer(detailLayer);
+      if (overviewLayer && !map.hasLayer(overviewLayer)) overviewLayer.addTo(map);
+    }
+    updateLabelVisibility();
+  }
+  map.on('zoomend', updateZoomLayers);
 
   function runSearch() {
     const input = document.getElementById('nrcad-search');
     const msg = document.getElementById('nrcad-search-msg');
     const nrcad = input.value.trim();
+    if (!detailLayer) {
+      msg.textContent = 'Se incarca datele, mai incearca putin...';
+      msg.style.display = 'block';
+      return;
+    }
     const lyr = featuresByNrcad[nrcad];
     if (lyr) {
       msg.style.display = 'none';
       map.fitBounds(lyr.getBounds(), { maxZoom: 19, padding: [40, 40] });
+      updateZoomLayers();
       lyr.openPopup();
     } else {
+      msg.textContent = 'Negasit';
       msg.style.display = 'block';
     }
   }
+  document.getElementById('nrcad-search-btn').addEventListener('click', runSearch);
+  document.getElementById('nrcad-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runSearch();
+  });
+
+  document.getElementById('opacity-select').addEventListener('change', (e) => {
+    pendingFillOpacity = OPACITY_BY_TRANSPARENCY[e.target.value];
+    if (detailLayer) detailLayer.setStyle({ fillOpacity: pendingFillOpacity });
+  });
+
+  fetch('data/sole.geojson')
+    .then(r => r.json())
+    .then(data => {
+      overviewLayer = L.geoJSON(data, {
+        renderer: L.canvas(),
+        style: { color: '#cc6600', weight: 2, fillColor: '#ffcc66', fillOpacity: 0.35 },
+        onEachFeature: (feature, lyr) => {
+          const p = feature.properties;
+          lyr.bindTooltip(`T${p.tarla} (${p.nr_parcele})`, {
+            permanent: true,
+            direction: 'center',
+            className: 'sola-label',
+          });
+          lyr.on('click', () => {
+            map.fitBounds(lyr.getBounds(), { maxZoom: DETAIL_MIN_ZOOM + 1, padding: [20, 20] });
+          });
+        },
+      });
+      map.fitBounds(overviewLayer.getBounds(), { maxZoom: 16, padding: [20, 20] });
+      updateZoomLayers();
+    })
+    .catch(err => {
+      document.getElementById('map').innerHTML =
+        '<p style="padding:20px">Eroare la incarcarea datelor: ' + err + '</p>';
+    });
 
   fetch('data/imobile.geojson')
     .then(r => r.json())
     .then(data => {
-      const layer = L.geoJSON(data, {
+      detailLayer = L.geoJSON(data, {
+        renderer: L.canvas({ padding: 0.5 }),
         style: {
           color: '#0000ff',
           weight: 2,
           fillColor: '#00ff00',
-          fillOpacity: 0.5,
+          fillOpacity: pendingFillOpacity,
         },
         onEachFeature: (feature, lyr) => {
           const p = feature.properties;
@@ -265,28 +348,11 @@
             `</div>`
           );
         },
-      }).addTo(map);
-      map.fitBounds(layer.getBounds(), { maxZoom: 18, padding: [20, 20] });
-
-      const LABEL_MIN_ZOOM = 17;
-      const updateLabelVisibility = () => {
-        map.getContainer().classList.toggle('labels-hidden', map.getZoom() < LABEL_MIN_ZOOM);
-      };
-      map.on('zoomend', updateLabelVisibility);
-      updateLabelVisibility();
-
-      document.getElementById('nrcad-search-btn').addEventListener('click', runSearch);
-      document.getElementById('nrcad-search').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') runSearch();
       });
-
-      document.getElementById('opacity-select').addEventListener('change', (e) => {
-        layer.setStyle({ fillOpacity: OPACITY_BY_TRANSPARENCY[e.target.value] });
-      });
+      updateZoomLayers();
     })
     .catch(err => {
-      document.getElementById('map').innerHTML =
-        '<p style="padding:20px">Eroare la incarcarea datelor: ' + err + '</p>';
+      console.error('Eroare la incarcarea datelor detaliate:', err);
     });
 </script>
 </body>
