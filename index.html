@@ -60,12 +60,31 @@
     border-radius: 3px;
   }
   .labels-hidden .nrcad-label { display: none; }
+
+  .watermark-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10000;
+    background-repeat: repeat;
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div class="watermark-overlay" id="watermark"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
+  (function () {
+    const text = 'EXCLUSIV PT UZUL PRIMARIEI DRAGOESTI';
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='520' height='260'>` +
+      `<text x='10' y='140' font-family='system-ui,sans-serif' font-size='15' font-weight='700' ` +
+      `fill='rgba(0,0,0,0.09)' transform='rotate(-25 260 130)'>${text}</text>` +
+      `</svg>`;
+    document.getElementById('watermark').style.backgroundImage =
+      "url(\"data:image/svg+xml;utf8," + encodeURIComponent(svg) + "\")";
+  })();
+
   const map = L.map('map');
 
   const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
