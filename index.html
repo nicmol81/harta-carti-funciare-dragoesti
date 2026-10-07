@@ -49,6 +49,16 @@
     margin-top: 4px;
     display: none;
   }
+  .opacity-box label {
+    font-size: 13px;
+    margin-right: 4px;
+  }
+  .opacity-box select {
+    font-size: 14px;
+    padding: 3px 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+  }
   .labels-hidden .nrcad-label { display: none; }
 </style>
 </head>
@@ -86,6 +96,25 @@
     },
   });
   map.addControl(new SearchControl());
+
+  const OPACITY_BY_TRANSPARENCY = { '50': 0.5, '75': 0.25, '100': 0 };
+  const OpacityControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function () {
+      const container = L.DomUtil.create('div', 'search-box opacity-box');
+      container.innerHTML =
+        '<label for="opacity-select">Transparenta</label>' +
+        '<select id="opacity-select">' +
+        '<option value="50" selected>50%</option>' +
+        '<option value="75">75%</option>' +
+        '<option value="100">100%</option>' +
+        '</select>';
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+      return container;
+    },
+  });
+  map.addControl(new OpacityControl());
 
   const featuresByNrcad = {};
 
@@ -143,6 +172,10 @@
       document.getElementById('nrcad-search-btn').addEventListener('click', runSearch);
       document.getElementById('nrcad-search').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') runSearch();
+      });
+
+      document.getElementById('opacity-select').addEventListener('change', (e) => {
+        layer.setStyle({ fillOpacity: OPACITY_BY_TRANSPARENCY[e.target.value] });
       });
     })
     .catch(err => {
