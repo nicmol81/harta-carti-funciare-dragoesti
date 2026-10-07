@@ -61,6 +61,23 @@
   }
   .labels-hidden .nrcad-label { display: none; }
 
+  .locate-btn {
+    background: #fff;
+    width: 34px;
+    height: 34px;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .locate-btn:hover { background: #f4f4f4; }
+  .locate-btn.active { color: #1a73e8; }
+  .locate-btn.error { color: #b00; }
+
   .watermark-overlay {
     position: fixed;
     inset: 0;
@@ -134,6 +151,76 @@
     },
   });
   map.addControl(new OpacityControl());
+
+  const LocateControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const btn = L.DomUtil.create('div', 'locate-btn');
+      btn.title = 'Arata locatia mea (GPS)';
+      btn.innerHTML = '&#8982;';
+      L.DomEvent.disableClickPropagation(btn);
+      L.DomEvent.on(btn, 'click', toggleLocate);
+      this._btn = btn;
+      return btn;
+    },
+  });
+  const locateControl = new LocateControl();
+  map.addControl(locateControl);
+
+  let locating = false;
+  let gpsMarker = null;
+  let gpsAccuracyCircle = null;
+  let firstFix = true;
+
+  function toggleLocate() {
+    if (locating) {
+      map.stopLocate();
+      locating = false;
+      firstFix = true;
+      locateControl._btn.classList.remove('active', 'error');
+      if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
+      if (gpsAccuracyCircle) { map.removeLayer(gpsAccuracyCircle); gpsAccuracyCircle = null; }
+      return;
+    }
+    locating = true;
+    firstFix = true;
+    locateControl._btn.classList.remove('error');
+    locateControl._btn.classList.add('active');
+    map.locate({ watch: true, enableHighAccuracy: true, maxZoom: 18 });
+  }
+
+  map.on('locationfound', (e) => {
+    if (gpsMarker) {
+      gpsMarker.setLatLng(e.latlng);
+      gpsAccuracyCircle.setLatLng(e.latlng).setRadius(e.accuracy);
+    } else {
+      gpsMarker = L.circleMarker(e.latlng, {
+        radius: 8,
+        color: '#fff',
+        weight: 2,
+        fillColor: '#1a73e8',
+        fillOpacity: 1,
+      }).addTo(map);
+      gpsAccuracyCircle = L.circle(e.latlng, {
+        radius: e.accuracy,
+        color: '#1a73e8',
+        weight: 1,
+        fillColor: '#1a73e8',
+        fillOpacity: 0.12,
+      }).addTo(map);
+    }
+    if (firstFix) {
+      map.setView(e.latlng, Math.max(map.getZoom(), 18));
+      firstFix = false;
+    }
+  });
+
+  map.on('locationerror', (e) => {
+    locating = false;
+    locateControl._btn.classList.remove('active');
+    locateControl._btn.classList.add('error');
+    alert('Nu am putut obtine locatia: ' + e.message);
+  });
 
   const featuresByNrcad = {};
 
